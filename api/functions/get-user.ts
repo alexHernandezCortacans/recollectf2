@@ -6,7 +6,9 @@ import jwt from 'jsonwebtoken';
 export default function handler(req: VercelRequest, res: VercelResponse) {
 
     //1 - Allow CORS
-    const origin = "https://erilllab.github.io" //change in dev
+
+    //const origin = "https://erilllab.github.io" //change in dev
+    const origin = "https://alexhernandezcortacans.github.io";
 
     res.setHeader("Access-Control-Allow-Origin", origin); // to be changed in prod
     res.setHeader("Access-Control-Allow-Credentials", "true");
