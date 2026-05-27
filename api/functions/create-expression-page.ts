@@ -44,7 +44,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // Params
-const { expressionId, htmlContent, uniprotAccession } = req.body || {};
+const { expressionId, htmlContent, expressionInfo, uniprotAccession } = req.body || {};
 
   if (!expressionId || !/^EXPREG_[a-f0-9A-F]+$/.test(expressionId)) {
     return res.status(400).json({ error: "expressionId inválido o ausente" });
@@ -62,6 +62,7 @@ const { expressionId, htmlContent, uniprotAccession } = req.body || {};
           expression_id: expressionId,
           // El workflow espera base64, igual que send-form usa b64 para el SQL
           html_content: b64(htmlContent),
+          expression_info: expressionInfo,
           uniprot_accession: uniprotAccession || "",
         },
       },
