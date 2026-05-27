@@ -58,13 +58,12 @@ const { expressionId, htmlContent, expressionInfo, uniprotAccession } = req.body
       `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_FILE_NAME}/dispatches`,
       {
         ref: "main",
-        inputs: {
-          expression_id: expressionId,
-          // El workflow espera base64, igual que send-form usa b64 para el SQL
-          html_content: b64(htmlContent),
-          expression_info: expressionInfo,
-          uniprot_accession: uniprotAccession || "",
-        },
+      inputs: {
+        expression_id: expressionId,
+        html_content: b64(htmlContent),
+        expressionInfo: String(expressionInfo),
+        uniprot_accession: uniprotAccession || "",
+      },
       },
       {
         headers: {
