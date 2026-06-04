@@ -6,8 +6,7 @@ import { parse } from "cookie";
 const JWT_SECRET = process.env.JWT_SECRET!;
 const BOT_TOKEN = process.env.BOT_TOKEN!;
 
-// const REPO_OWNER = "ErillLab";
-const REPO_OWNER = "alexHernandezCortacans";
+const REPO_OWNER = "ErillLab";
 
 const REPO_NAME = "reCollecTF";
 const WORKFLOW_FILE_NAME = "update-db.yml";
@@ -53,7 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // CORS
   // const origin = "https://erilllab.github.io";
-  const origin = "https://alexhernandezcortacans.github.io";
+  const origin = "https://collectf.org";
 
   res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Access-Control-Allow-Credentials", "true");
