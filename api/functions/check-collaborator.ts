@@ -6,14 +6,16 @@ import { use } from 'react';
 
 const BOT_TOKEN = process.env.BOT_TOKEN!;
 const JWT_SECRET = process.env.JWT_SECRET!;
-const REPO_OWNER = "ErillLab";
+// const REPO_OWNER = 'ErillLab';
+const REPO_OWNER = "alexHernandezCortacans";
 const REPO_NAME = 'reCollecTF';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     //1 - Allow CORS
     console.log("Setting CORS Policy...");
-    const origin = "https://collectf.org"; // change in dev
+    const origin = "https://alexhernandezcortacans.github.io";
+     //const origin = "https://collectf.org"; // change in merge
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");

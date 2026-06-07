@@ -4,11 +4,12 @@ import { verify } from "jsonwebtoken";
 import axios from "axios";
 import { parse } from "cookie";
 
-
-const BOT_TOKEN = process.env.BOT_TOKEN!;
 const JWT_SECRET = process.env.JWT_SECRET!;
-const REPO_OWNER = 'ErillLab';
-const REPO_NAME = 'reCollecTF';
+const BOT_TOKEN = process.env.BOT_TOKEN!;
+
+//const REPO_OWNER = "ErillLab";
+const REPO_OWNER = "alexHernandezCortacans";
+const REPO_NAME = "reCollecTF";
 
 const WORKFLOW_FILE_NAME = "create-expression-page.yml";
 
@@ -21,8 +22,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ whoami: "CREATE-EXPRESSION-PAGE" });
   }
 
-  const origin = "https://collectf.org"; // change in dev
-  res.setHeader("Access-Control-Allow-Origin", origin);
+  // const origin = "https://collectf.org"; change in merge
+  const origin = "https://alexhernandezcortacans.github.io";  res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
