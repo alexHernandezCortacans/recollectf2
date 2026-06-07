@@ -9,12 +9,11 @@ const BASE_URL = "https://recollectf2.vercel.app/api/functions";
 const REPO_OWNER = "ErillLab";
 const REPO_NAME = "reCollecTF";
 
-// Polling: espera a que el run de update-db.yml que usa sql_path acabe con éxito
 async function waitForUpdateDB(sqlPath: string, timeoutMs = 55000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
 
-  // Da tiempo a GitHub a registrar el run (~3s)
-  await new Promise(r => setTimeout(r, 3000));
+  // Da tiempo a GitHub a registrar el run
+  await new Promise(r => setTimeout(r, 4000));
 
   while (Date.now() < deadline) {
     const runsRes = await fetch(
@@ -100,11 +99,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: "send-form threw an exception", details: err.message });
   }
 
-  // 2) Esperar a que Update DB termine
+  // 2) Esperar a que Update DB termine con éxito
   try {
     await waitForUpdateDB(sendFormPayload.sql_path);
   } catch (err: any) {
-    return res.status(500).json({ error: "Update DB workflow did not complete successfully", details: err.message });
+    return res.status(500).json({ error: "Update DB did not complete successfully", details: err.message });
   }
 
   // 3) create-expression-page
