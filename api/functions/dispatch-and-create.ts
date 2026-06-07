@@ -38,7 +38,7 @@ async function waitForUpdateDB(sqlPath: string, timeoutMs = 55000): Promise<void
       }
     }
 
-    await new Promise(r => setTimeout(r, 4000));
+    await new Promise(r => setTimeout(r, 60000));
   }
 
   throw new Error("Timeout: Update DB workflow did not complete in time");
