@@ -1,47 +1,17 @@
 // api/functions/dispatch-and-create.ts
 import { VercelRequest, VercelResponse } from "@vercel/node";
 import { verify } from "jsonwebtoken";
+import axios from "axios";
 import { parse } from "cookie";
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 const BOT_TOKEN = process.env.BOT_TOKEN!;
-const BASE_URL = "https://recollectf2.vercel.app/api/functions";
-const REPO_OWNER = "ErillLab";
+const REPO_OWNER = "alexHernandezCortacans";
 const REPO_NAME = "reCollecTF";
+const WORKFLOW_FILE_NAME = "update-db-and-create-page.yml";
 
-async function waitForUpdateDB(sqlPath: string, timeoutMs = 55000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-
-  // Da tiempo a GitHub a registrar el run
-  await new Promise(r => setTimeout(r, 4000));
-
-  while (Date.now() < deadline) {
-    const runsRes = await fetch(
-      `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/update-db.yml/runs?per_page=10&branch=main`,
-      {
-        headers: {
-          Authorization: `Bearer ${BOT_TOKEN}`,
-          Accept: "application/vnd.github+json",
-        },
-      }
-    );
-
-    const runs = await runsRes.json();
-    const run = runs.workflow_runs?.find((r: any) =>
-      r.display_title?.includes(sqlPath) || r.head_commit?.message?.includes(sqlPath)
-    );
-
-    if (run) {
-      if (run.status === "completed") {
-        if (run.conclusion === "success") return;
-        throw new Error(`Update DB failed with conclusion: ${run.conclusion}`);
-      }
-    }
-
-    await new Promise(r => setTimeout(r, 60000));
-  }
-
-  throw new Error("Timeout: Update DB workflow did not complete in time");
+function b64(str: string) {
+  return Buffer.from(str, "utf8").toString("base64");
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -69,65 +39,75 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: "Invalid session" });
   }
 
+  // Params
   const { inputs, expressionId, htmlContent, expressionInfo, uniprotAccession } = req.body || {};
 
   if (!inputs?.queries) {
     return res.status(400).json({ error: "Missing inputs.queries" });
   }
-  if (!expressionId || !htmlContent) {
-    return res.status(400).json({ error: "Missing expressionId or htmlContent" });
+  if (!expressionId || !/^EXPREG_[a-f0-9A-F]+$/.test(expressionId)) {
+    return res.status(400).json({ error: "expressionId inválido o ausente" });
+  }
+  if (!htmlContent || typeof htmlContent !== "string" || !htmlContent.trim()) {
+    return res.status(400).json({ error: "htmlContent ausente o vacío" });
   }
 
-  const cookieHeader = req.headers.cookie || "";
+  // 1) Crear el archivo SQL en el repo (igual que send-form)
+  const safeTs = new Date().toISOString().replace(/[:.]/g, "-");
+  const sqlPath = `pending-sql/${safeTs}.sql`;
 
-  // 1) send-form
-  let sendFormPayload: any;
   try {
-    const sendFormRes = await fetch(`${BASE_URL}/send-form`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Cookie": cookieHeader },
-      body: JSON.stringify({ inputs }),
-    });
-
-    const text = await sendFormRes.text();
-    try { sendFormPayload = text ? JSON.parse(text) : null; } catch { sendFormPayload = text; }
-
-    if (!sendFormRes.ok) {
-      return res.status(sendFormRes.status).json({ error: "send-form failed", details: sendFormPayload });
-    }
+    // Crear el archivo SQL en el repo
+    await axios.put(
+      `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${encodeURIComponent(sqlPath)}`,
+      {
+        message: `Add SQL for workflow: ${sqlPath}`,
+        content: b64(inputs.queries),
+        branch: "main",
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${BOT_TOKEN}`,
+          Accept: "application/vnd.github+json",
+        },
+      }
+    );
   } catch (err: any) {
-    return res.status(500).json({ error: "send-form threw an exception", details: err.message });
+    const status = err?.response?.status || 500;
+    const data = err?.response?.data || { message: err?.message || "Unknown error" };
+    return res.status(status).json({ error: "Failed to create SQL file", details: data });
   }
 
-  // 2) Esperar a que Update DB termine con éxito
+  // 2) Disparar el workflow unificado con todos los parámetros
   try {
-    await waitForUpdateDB(sendFormPayload.sql_path);
+    await axios.post(
+      `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_FILE_NAME}/dispatches`,
+      {
+        ref: "main",
+        inputs: {
+          sql_path: sqlPath,
+          expression_id: expressionId,
+          html_content: b64(htmlContent),
+          expressionInfo: String(expressionInfo),
+          uniprot_accession: uniprotAccession || "",
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${BOT_TOKEN}`,
+          Accept: "application/vnd.github+json",
+        },
+      }
+    );
   } catch (err: any) {
-    return res.status(500).json({ error: "Update DB did not complete successfully", details: err.message });
-  }
-
-  // 3) create-expression-page
-  let createPayload: any;
-  try {
-    const createRes = await fetch(`${BASE_URL}/create-expression-page`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Cookie": cookieHeader },
-      body: JSON.stringify({ expressionId, htmlContent, expressionInfo, uniprotAccession }),
-    });
-
-    const text = await createRes.text();
-    try { createPayload = text ? JSON.parse(text) : null; } catch { createPayload = text; }
-
-    if (!createRes.ok) {
-      return res.status(createRes.status).json({ error: "create-expression-page failed", details: createPayload });
-    }
-  } catch (err: any) {
-    return res.status(500).json({ error: "create-expression-page threw an exception", details: err.message });
+    const status = err?.response?.status || 500;
+    const data = err?.response?.data || { message: err?.message || "Unknown error" };
+    return res.status(status).json({ error: "Failed to dispatch workflow", details: data });
   }
 
   return res.status(200).json({
-    message: "Both workflows dispatched successfully",
-    sendForm: sendFormPayload,
-    createExpressionPage: createPayload,
+    message: "Workflow dispatched",
+    sql_path: sqlPath,
+    expression_id: expressionId,
   });
 }
