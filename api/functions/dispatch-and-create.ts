@@ -52,12 +52,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: "htmlContent ausente o vacío" });
   }
 
-  // 1) Crear el archivo SQL en el repo (igual que send-form)
+  // 1) Creates SQL file in repo
   const safeTs = new Date().toISOString().replace(/[:.]/g, "-");
   const sqlPath = `pending-sql/${safeTs}.sql`;
 
   try {
-    // Crear el archivo SQL en el repo
     await axios.put(
       `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${encodeURIComponent(sqlPath)}`,
       {
@@ -78,7 +77,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(status).json({ error: "Failed to create SQL file", details: data });
   }
 
-  // 2) Disparar el workflow unificado con todos los parámetros
+  // 2) Launches dispatch and create workflow with all the data
   try {
     await axios.post(
       `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_FILE_NAME}/dispatches`,
