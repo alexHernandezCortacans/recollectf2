@@ -7,8 +7,7 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
 
     //1 - Allow CORS
 
-    //const origin = "https://collectf.org" //change in dev
-    const origin = "https://alexhernandezcortacans.github.io";
+    const origin = "https://collectf.org" //change in dev
     
     res.setHeader("Access-Control-Allow-Origin", origin); // to be changed in prod
     res.setHeader("Access-Control-Allow-Credentials", "true");
