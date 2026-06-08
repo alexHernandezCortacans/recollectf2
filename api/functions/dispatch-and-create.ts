@@ -6,9 +6,9 @@ import { parse } from "cookie";
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 const BOT_TOKEN = process.env.BOT_TOKEN!;
-const REPO_OWNER = "ErillLab";
-const REPO_NAME = "reCollecTF";
-const WORKFLOW_FILE_NAME = "update-db-and-create-page.yml";
+const REPO_OWNER = 'ErillLab';
+const REPO_NAME = 'reCollecTF';
+const WORKFLOW_FILE_NAME = 'update-db-and-create-page.yml';
 
 function b64(str: string) {
   return Buffer.from(str, "utf8").toString("base64");
