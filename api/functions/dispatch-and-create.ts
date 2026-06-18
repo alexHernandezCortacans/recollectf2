@@ -1,12 +1,13 @@
 // api/functions/dispatch-and-create.ts
 import { VercelRequest, VercelResponse } from "@vercel/node";
+import { originConstGlobal, REPO_OWNER_GLOBAL } from "../../consts";
 import { verify } from "jsonwebtoken";
 import axios from "axios";
 import { parse } from "cookie";
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 const BOT_TOKEN = process.env.BOT_TOKEN!;
-const REPO_OWNER = 'ErillLab';
+const REPO_OWNER = REPO_OWNER_GLOBAL;
 const REPO_NAME = 'reCollecTF';
 const WORKFLOW_FILE_NAME = 'update-db-and-create-page.yml';
 
@@ -19,7 +20,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ whoami: "DISPATCH-AND-CREATE" });
   }
 
-  const origin = "https://collectf.org";
+  const origin = originConstGlobal;
   res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
