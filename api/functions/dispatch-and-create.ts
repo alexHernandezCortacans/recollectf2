@@ -15,6 +15,31 @@ function b64(str: string) {
   return Buffer.from(str, "utf8").toString("base64");
 }
 
+async function waitUntilFileExists(sqlPath: string) {
+  // Espera hasta ~5s a que el archivo sea visible en la API (eventual consistency)
+  const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${encodeURIComponent(sqlPath)}?ref=main`;
+
+  for (let i = 0; i < 10; i++) {
+    try {
+      await axios.get(url, {
+        headers: {
+          Authorization: `Bearer ${BOT_TOKEN}`,
+          Accept: "application/vnd.github+json",
+        },
+      });
+      return; // existe
+    } catch (e: any) {
+      const status = e?.response?.status;
+      if (status !== 404) {
+        throw e; // si es otro error, lo propagamos
+      }
+      await sleep(500);
+    }
+  }
+
+  throw new Error(`SQL file not visible yet in repo after retries: ${sqlPath}`);
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "GET") {
     return res.status(200).json({ whoami: "DISPATCH-AND-CREATE" });
@@ -77,6 +102,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const data = err?.response?.data || { message: err?.message || "Unknown error" };
     return res.status(status).json({ error: "Failed to create SQL file", details: data });
   }
+  // 2) 
+
+  await waitUntilFileExists(sqlPath);
 
   // 2) Launches dispatch and create workflow with all the data
   try {
