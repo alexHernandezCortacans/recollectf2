@@ -102,11 +102,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const data = err?.response?.data || { message: err?.message || "Unknown error" };
     return res.status(status).json({ error: "Failed to create SQL file", details: data });
   }
-  // 2) 
+  // 2) Wait until the pending-sql/ file has been created to run the workflow
 
   await waitUntilFileExists(sqlPath);
 
-  // 2) Launches dispatch and create workflow with all the data
+  // 3) Launches dispatch and create workflow with all the data
   try {
     await axios.post(
       `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_FILE_NAME}/dispatches`,
