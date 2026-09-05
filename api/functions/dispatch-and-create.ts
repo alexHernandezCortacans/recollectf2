@@ -112,12 +112,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const htmlPath = `pending-html/${expressionId}.html.gz.b64`;
 
   try {
-    // 1) Pujar SQL i HTML simultàniament
-    await putFile(sqlPath, b64(inputs.queries), `Add SQL for workflow: ${sqlPath}`);
-    await waitUntilFileExists(sqlPath);
+    // 1) Obtenir els sha dels dos fitxers en paral·lel (només lectura, no hi ha conflicte)
+    const [sqlSha, htmlSha] = await Promise.all([
+      getFileSha(sqlPath),
+      getFileSha(htmlPath),
+    ]);
 
-    await putFile(htmlPath, b64gzip(htmlContent), `Add HTML for: ${expressionId}`);
-    await waitUntilFileExists(htmlPath);
+    // 2) Pujar en sèrie per evitar conflictes de sha
+    await axios.put(
+      `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${encodeURIComponent(sqlPath)}`,
+      {
+        message: `Add SQL for workflow: ${sqlPath}`,
+        content: b64(inputs.queries),
+        branch: "main",
+        ...(sqlSha ? { sha: sqlSha } : {}),
+      },
+      { headers: { Authorization: `Bearer ${BOT_TOKEN}`, Accept: "application/vnd.github+json" } }
+    );
+
+    await axios.put(
+      `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${encodeURIComponent(htmlPath)}`,
+      {
+        message: `Add HTML for: ${expressionId}`,
+        content: b64gzip(htmlContent),
+        branch: "main",
+        ...(htmlSha ? { sha: htmlSha } : {}),
+      },
+      { headers: { Authorization: `Bearer ${BOT_TOKEN}`, Accept: "application/vnd.github+json" } }
+    );
+
+    // 3) Disparar el workflow
+    // await axios.post( /* dispatch */ );
 
     // Espera que tots dos siguin visibles abans de disparar el workflow
     // 2) Disparar el workflow un sol cop quan tots dos fitxers estan al repo
