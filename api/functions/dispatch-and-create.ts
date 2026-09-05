@@ -91,10 +91,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     // 1) Pujar SQL i HTML simultàniament
-    await Promise.all([
-      putFile(sqlPath, b64(inputs.queries), `Add SQL for workflow: ${sqlPath}`),
-      putFile(htmlPath, b64gzip(htmlContent), `Add HTML for: ${expressionId}`),
-    ]);
+    await putFile(sqlPath, b64(inputs.queries), `Add SQL for workflow: ${sqlPath}`);
+    await putFile(htmlPath, b64gzip(htmlContent), `Add HTML for: ${expressionId}`);
 
     // 2) Disparar el workflow un sol cop quan tots dos fitxers estan al repo
     await axios.post(
