@@ -61,13 +61,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
 
     const htmlPath = `pending-html/${expressionId}.html.gz.b64`;
+    const htmlUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${encodeURIComponent(htmlPath)}`;
+
+    // Comprueba si el archivo ya existe para obtener su sha
+    let sha: string | undefined;
+    try {
+      const existing = await axios.get(htmlUrl, {
+        headers: { Authorization: `Bearer ${BOT_TOKEN}`, Accept: "application/vnd.github+json" },
+      });
+      sha = existing.data.sha;
+    } catch (e: any) {
+      if (e?.response?.status !== 404) throw e;
+    }
 
     await axios.put(
-      `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${encodeURIComponent(htmlPath)}`,
+      htmlUrl,
       {
         message: `Add HTML for: ${expressionId}`,
         content: b64gzip(htmlContent),
         branch: "main",
+        ...(sha ? { sha } : {}),
       },
       { headers: { Authorization: `Bearer ${BOT_TOKEN}`, Accept: "application/vnd.github+json" } }
     );
