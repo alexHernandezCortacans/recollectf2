@@ -21,6 +21,28 @@ function b64gzip(str: string): string {
   return compressed.toString("base64");
 }
 
+async function waitUntilFileExists(path: string, timeoutMs = 120000): Promise<void> {
+  const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${encodeURIComponent(path)}?ref=main`;
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    try {
+      await axios.get(url, {
+        headers: {
+          Authorization: `Bearer ${BOT_TOKEN}`,
+          Accept: "application/vnd.github+json",
+        },
+      });
+      return; // trobat, sortim
+    } catch (e: any) {
+      if (e?.response?.status !== 404) throw e;
+    }
+    await delay(3000);
+  }
+
+  throw new Error(`File not visible in repo after retries: ${path}`);
+}
+
 async function getFileSha(path: string): Promise<string | undefined> {
   try {
     const res = await axios.get(
@@ -92,8 +114,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     // 1) Pujar SQL i HTML simultàniament
     await putFile(sqlPath, b64(inputs.queries), `Add SQL for workflow: ${sqlPath}`);
-    await putFile(htmlPath, b64gzip(htmlContent), `Add HTML for: ${expressionId}`);
+    await waitUntilFileExists(sqlPath);
 
+    await putFile(htmlPath, b64gzip(htmlContent), `Add HTML for: ${expressionId}`);
+    await waitUntilFileExists(htmlPath);
+
+    // Espera que tots dos siguin visibles abans de disparar el workflow
     // 2) Disparar el workflow un sol cop quan tots dos fitxers estan al repo
     await axios.post(
       `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_FILE_NAME}/dispatches`,
