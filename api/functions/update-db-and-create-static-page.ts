@@ -1,4 +1,4 @@
-// api/functions/update-db-and-create-static-page.ts
+// api/functions/dispatch-and-create.ts
 import { VercelRequest, VercelResponse } from "@vercel/node";
 import { originConstGlobal, REPO_OWNER_GLOBAL } from "../../consts";
 import { verify } from "jsonwebtoken";
@@ -6,24 +6,51 @@ import axios from "axios";
 import { parse } from "cookie";
 import { gzipSync } from "zlib";
 
-function b64gzip(str: string): string {
-  const compressed = gzipSync(Buffer.from(str, "utf8"));
-  return compressed.toString("base64");
-}
-
 const JWT_SECRET = process.env.JWT_SECRET!;
 const BOT_TOKEN = process.env.BOT_TOKEN!;
 const REPO_OWNER = REPO_OWNER_GLOBAL;
 const REPO_NAME = "reCollecTF";
 const WORKFLOW_FILE_NAME = "update-db-and-create-page.yml";
 
-function b64(str: string) {
+function b64(str: string): string {
   return Buffer.from(str, "utf8").toString("base64");
+}
+
+function b64gzip(str: string): string {
+  const compressed = gzipSync(Buffer.from(str, "utf8"));
+  return compressed.toString("base64");
+}
+
+async function getFileSha(path: string): Promise<string | undefined> {
+  try {
+    const res = await axios.get(
+      `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${encodeURIComponent(path)}`,
+      { headers: { Authorization: `Bearer ${BOT_TOKEN}`, Accept: "application/vnd.github+json" } }
+    );
+    return res.data.sha;
+  } catch (e: any) {
+    if (e?.response?.status === 404) return undefined;
+    throw e;
+  }
+}
+
+async function putFile(path: string, content: string, message: string): Promise<void> {
+  const sha = await getFileSha(path);
+  await axios.put(
+    `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${encodeURIComponent(path)}`,
+    {
+      message,
+      content,
+      branch: "main",
+      ...(sha ? { sha } : {}),
+    },
+    { headers: { Authorization: `Bearer ${BOT_TOKEN}`, Accept: "application/vnd.github+json" } }
+  );
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "GET") {
-    return res.status(200).json({ whoami: "UPDATE-DB-AND-CREATE-STATIC-PAGE" });
+    return res.status(200).json({ whoami: "DISPATCH-AND-CREATE" });
   }
 
   const origin = originConstGlobal;
@@ -46,10 +73,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: "Invalid session" });
   }
 
-  const { sqlPath, expressionId, htmlContent, expressionInfo, uniprotAccession } = req.body || {};
+  const { inputs, expressionId, htmlContent, expressionInfo, uniprotAccession } = req.body || {};
 
-  if (!sqlPath) {
-    return res.status(400).json({ error: "Missing sqlPath" });
+  if (!inputs?.queries) {
+    return res.status(400).json({ error: "Missing inputs.queries" });
   }
   if (!expressionId || !/^EXPREG_[a-f0-9A-F]+$/.test(expressionId)) {
     return res.status(400).json({ error: "expressionId inválido o ausente" });
@@ -58,54 +85,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: "htmlContent ausente o vacío" });
   }
 
+  const safeTs = new Date().toISOString().replace(/[:.]/g, "-");
+  const sqlPath = `pending-sql/${safeTs}.sql`;
+  const htmlPath = `pending-html/${expressionId}.html.gz.b64`;
+
   try {
+    // 1) Pujar SQL i HTML simultàniament
+    await Promise.all([
+      putFile(sqlPath, b64(inputs.queries), `Add SQL for workflow: ${sqlPath}`),
+      putFile(htmlPath, b64gzip(htmlContent), `Add HTML for: ${expressionId}`),
+    ]);
 
-    const htmlPath = `pending-html/${expressionId}.html.gz.b64`;
-    const htmlUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${encodeURIComponent(htmlPath)}`;
-
-    // Comprueba si el archivo ya existe para obtener su sha
-    let sha: string | undefined;
-    try {
-      const existing = await axios.get(htmlUrl, {
-        headers: { Authorization: `Bearer ${BOT_TOKEN}`, Accept: "application/vnd.github+json" },
-      });
-      sha = existing.data.sha;
-    } catch (e: any) {
-      if (e?.response?.status !== 404) throw e;
-    }
-
-    await axios.put(
-      htmlUrl,
-      {
-        message: `Add HTML for: ${expressionId}`,
-        content: b64gzip(htmlContent),
-        branch: "main",
-        ...(sha ? { sha } : {}),
-      },
-      { headers: { Authorization: `Bearer ${BOT_TOKEN}`, Accept: "application/vnd.github+json" } }
-    );
-
+    // 2) Disparar el workflow un sol cop quan tots dos fitxers estan al repo
     await axios.post(
       `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_FILE_NAME}/dispatches`,
-    {
-      ref: "main",
-      inputs: {
-        sql_path: sqlPath,
-        expression_id: expressionId,
-        expressionInfo: String(expressionInfo),
-        uniprot_accession: uniprotAccession || "",
+      {
+        ref: "main",
+        inputs: {
+          sql_path: sqlPath,
+          expression_id: expressionId,
+          expressionInfo: String(expressionInfo),
+          uniprot_accession: uniprotAccession || "",
+        },
       },
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${BOT_TOKEN}`,
-        Accept: "application/vnd.github+json",
-      },
-    });
+      {
+        headers: {
+          Authorization: `Bearer ${BOT_TOKEN}`,
+          Accept: "application/vnd.github+json",
+        },
+      }
+    );
   } catch (err: any) {
     const status = err?.response?.status || 500;
     const data = err?.response?.data || { message: err?.message || "Unknown error" };
-    return res.status(status).json({ error: "Failed to dispatch workflow", details: data });
+    console.error("DISPATCH-AND-CREATE ERROR:", status, data);
+    return res.status(status).json({ error: "DISPATCH-AND-CREATE ERROR", details: data });
   }
 
   return res.status(200).json({
