@@ -21,26 +21,41 @@ function b64gzip(str: string): string {
   return compressed.toString("base64");
 }
 
-async function waitUntilFileExists(path: string, timeoutMs = 120000): Promise<void> {
-  const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${encodeURIComponent(path)}?ref=main`;
-  const deadline = Date.now() + timeoutMs;
+async function pushMultipleFiles(files: { path: string; content: string }[], message: string): Promise<void> {
+  const baseUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
+  const headers = { Authorization: `Bearer ${BOT_TOKEN}`, Accept: "application/vnd.github+json" };
 
-  while (Date.now() < deadline) {
-    try {
-      await axios.get(url, {
-        headers: {
-          Authorization: `Bearer ${BOT_TOKEN}`,
-          Accept: "application/vnd.github+json",
-        },
-      });
-      return; // trobat, sortim
-    } catch (e: any) {
-      if (e?.response?.status !== 404) throw e;
-    }
-    await delay(3000);
-  }
+  // 1) Obtenir el SHA del HEAD de main
+  const refRes = await axios.get(`${baseUrl}/git/ref/heads/main`, { headers });
+  const headSha = refRes.data.object.sha;
 
-  throw new Error(`File not visible in repo after retries: ${path}`);
+  // 2) Obtenir el tree del commit actual
+  const commitRes = await axios.get(`${baseUrl}/git/commits/${headSha}`, { headers });
+  const treeSha = commitRes.data.tree.sha;
+
+  // 3) Crear un nou tree amb tots els fitxers
+  const treeRes = await axios.post(`${baseUrl}/git/trees`, {
+    base_tree: treeSha,
+    tree: files.map(f => ({
+      path: f.path,
+      mode: "100644",
+      type: "blob",
+      content: f.content,
+    })),
+  }, { headers });
+
+  // 4) Crear el commit
+  const newCommitRes = await axios.post(`${baseUrl}/git/commits`, {
+    message,
+    tree: treeRes.data.sha,
+    parents: [headSha],
+  }, { headers });
+
+  // 5) Actualitzar la referència de main
+  await axios.patch(`${baseUrl}/git/refs/heads/main`, {
+    sha: newCommitRes.data.sha,
+    force: false,
+  }, { headers });
 }
 
 async function getFileSha(path: string): Promise<string | undefined> {
@@ -112,37 +127,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const htmlPath = `pending-html/${expressionId}.html.gz.b64`;
 
   try {
-    // 1) Obtenir els sha dels dos fitxers en paral·lel (només lectura, no hi ha conflicte)
-    const [sqlSha, htmlSha] = await Promise.all([
-      getFileSha(sqlPath),
-      getFileSha(htmlPath),
-    ]);
-
-    // 2) Pujar en sèrie per evitar conflictes de sha
-    await axios.put(
-      `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${encodeURIComponent(sqlPath)}`,
-      {
-        message: `Add SQL for workflow: ${sqlPath}`,
-        content: b64(inputs.queries),
-        branch: "main",
-        ...(sqlSha ? { sha: sqlSha } : {}),
-      },
-      { headers: { Authorization: `Bearer ${BOT_TOKEN}`, Accept: "application/vnd.github+json" } }
-    );
-
-    await axios.put(
-      `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${encodeURIComponent(htmlPath)}`,
-      {
-        message: `Add HTML for: ${expressionId}`,
-        content: b64gzip(htmlContent),
-        branch: "main",
-        ...(htmlSha ? { sha: htmlSha } : {}),
-      },
-      { headers: { Authorization: `Bearer ${BOT_TOKEN}`, Accept: "application/vnd.github+json" } }
-    );
-
-    // 3) Disparar el workflow
-    // await axios.post( /* dispatch */ );
+    await pushMultipleFiles(
+    [
+      { path: sqlPath, content: b64(inputs.queries) },
+      { path: htmlPath, content: b64gzip(htmlContent) },
+    ], `Add SQL and HTML for: ${expressionId}`);
 
     // Espera que tots dos siguin visibles abans de disparar el workflow
     // 2) Disparar el workflow un sol cop quan tots dos fitxers estan al repo
