@@ -21,8 +21,10 @@ function b64gzip(str: string): string {
   return compressed.toString("base64");
 }
 
+const baseUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
+
+
 async function pushMultipleFiles(files: { path: string; content: string }[], message: string): Promise<void> {
-  const baseUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
   const headers = { Authorization: `Bearer ${BOT_TOKEN}`, Accept: "application/vnd.github+json" };
 
   // 1) Obtenir el SHA del HEAD de main
