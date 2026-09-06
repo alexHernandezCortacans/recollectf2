@@ -3,19 +3,24 @@ import { originConstGlobal, REPO_OWNER_GLOBAL } from "../../consts";
 import { verify } from "jsonwebtoken";
 import axios from "axios";
 import { parse } from "cookie";
+import zlib from "zlib";
+import { promisify } from "util";
 
+const gzip = promisify(zlib.gzip);
 const JWT_SECRET = process.env.JWT_SECRET!;
 const BOT_TOKEN = process.env.BOT_TOKEN!;
 const REPO_OWNER = REPO_OWNER_GLOBAL;
 const REPO_NAME = "reCollecTF";
 const WORKFLOW_FILE_NAME = "update-db-and-create-page.yml";
 
-async function createBlob(content: string): Promise<string> {
+async function createBlob(content: string | Buffer): Promise<string> {
+  const isBuffer = Buffer.isBuffer(content);
+  
   const res = await axios.post(
     `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/git/blobs`,
     {
-      content,
-      encoding: "utf-8",
+      content: isBuffer ? content.toString('base64') : content,
+      encoding: isBuffer ? "base64" : "utf-8",
     },
     {
       headers: {
@@ -29,7 +34,7 @@ async function createBlob(content: string): Promise<string> {
 }
 
 async function pushMultipleFiles(
-  files: { path: string; content?: string; sha?: string }[],
+  files: { path: string; content?: string | Buffer; sha?: string }[],
   message: string
 ): Promise<void> {
   const baseUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
@@ -53,18 +58,32 @@ async function pushMultipleFiles(
 
   const treeSha = commitRes.data.tree.sha;
 
+  // Procesar todos los archivos y crear sus blobs
+  const treeFiles = await Promise.all(files.map(async (file) => {
+    if (file.sha) {
+      return {
+        path: file.path,
+        mode: "100644",
+        type: "blob",
+        sha: file.sha,
+      };
+    }
+
+    // Crear blob para el contenido (ya sea string o buffer)
+    const blobSha = await createBlob(file.content!);
+    return {
+      path: file.path,
+      mode: "100644",
+      type: "blob",
+      sha: blobSha,
+    };
+  }));
+
   const treeRes = await axios.post(
     `${baseUrl}/git/trees`,
     {
       base_tree: treeSha,
-      tree: files.map((file) => ({
-        path: file.path,
-        mode: "100644",
-        type: "blob",
-        ...(file.sha
-          ? { sha: file.sha }
-          : { content: file.content }),
-      })),
+      tree: treeFiles,
     },
     { headers }
   );
@@ -177,13 +196,18 @@ export default async function handler(
     .replace(/[:.]/g, "-");
 
   const sqlPath = `pending-sql/${safeTs}.sql`;
-  const htmlPath = `pending-html/${expressionId}.html`;
+  const htmlPath = `pending-html/${expressionId}.html.gz`;
 
   try {
-    // El HTML llega como texto plano.
-    // Se crea un Blob explícitamente para poder referenciarlo
-    // mediante su SHA desde el Git Tree.
-    const htmlBlobSha = await createBlob(htmlContent);
+    // COMPRIMIR EL HTML CON GZIP
+    const compressedHtml = await gzip(htmlContent, {
+      level: 9, // Máxima compresión
+    });
+
+    console.log(`HTML comprimido: ${htmlContent.length} bytes -> ${compressedHtml.length} bytes`);
+
+    // Crear el blob con el HTML comprimido
+    const htmlBlobSha = await createBlob(compressedHtml);
 
     await pushMultipleFiles(
       [
@@ -208,6 +232,7 @@ export default async function handler(
           expression_id: expressionId,
           expressionInfo: String(expressionInfo),
           uniprot_accession: uniprotAccession || "",
+          html_path: htmlPath,
         },
       },
       {
@@ -240,5 +265,7 @@ export default async function handler(
     message: "Workflow dispatched",
     sql_path: sqlPath,
     expression_id: expressionId,
+    html_path: htmlPath,
+    html_compressed: true,
   });
 }
