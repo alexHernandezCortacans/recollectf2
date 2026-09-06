@@ -129,7 +129,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     await pushMultipleFiles(
     [
-      { path: sqlPath, content: b64(inputs.queries) },
+      { path: sqlPath, content: inputs.queries },
       { path: htmlPath, content: b64gzip(htmlContent) },
     ], `Add SQL and HTML for: ${expressionId}`);
 
