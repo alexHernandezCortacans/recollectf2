@@ -127,46 +127,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const htmlPath = `pending-html/${expressionId}.html.gz.b64`;
 
   try {
-    // 1) Crear el blob de l'HTML (binari, necessita base64)
-    const blobRes = await axios.post(
-      `${baseUrl}/git/blobs`,
-      { content: b64gzip(htmlContent), encoding: "base64" },
-      { headers }
-    );
-
-    // 2) Pujar tots dos en un sol commit
-    const refRes = await axios.get(`${baseUrl}/git/ref/heads/main`, { headers });
-    const headSha = refRes.data.object.sha;
-    const commitRes = await axios.get(`${baseUrl}/git/commits/${headSha}`, { headers });
-
-    const treeRes = await axios.post(`${baseUrl}/git/trees`, {
-      base_tree: commitRes.data.tree.sha,
-      tree: [
-        {
-          path: sqlPath,
-          mode: "100644",
-          type: "blob",
-          content: inputs.queries,  // ← SQL en text pla
-        },
-        {
-          path: htmlPath,
-          mode: "100644",
-          type: "blob",
-          sha: blobRes.data.sha,    // ← HTML com a blob binari
-        },
-      ],
-    }, { headers });
-
-    const newCommitRes = await axios.post(`${baseUrl}/git/commits`, {
-      message: `Add SQL and HTML for: ${expressionId}`,
-      tree: treeRes.data.sha,
-      parents: [headSha],
-    }, { headers });
-
-    await axios.patch(`${baseUrl}/git/refs/heads/main`, {
-      sha: newCommitRes.data.sha,
-      force: false,
-    }, { headers });
+    await pushMultipleFiles(
+    [
+      { path: sqlPath, content: b64(inputs.queries) },
+      { path: htmlPath, content: b64gzip(htmlContent) },
+    ], `Add SQL and HTML for: ${expressionId}`);
 
     // Espera que tots dos siguin visibles abans de disparar el workflow
     // 2) Disparar el workflow un sol cop quan tots dos fitxers estan al repo
