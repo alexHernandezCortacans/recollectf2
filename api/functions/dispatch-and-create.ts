@@ -196,19 +196,21 @@ export default async function handler(
     .replace(/[:.]/g, "-");
 
   const sqlPath = `pending-sql/${safeTs}.sql`;
+  // El workflow espera este nombre exacto: pending-html/${expressionId}.html.gz
   const htmlPath = `pending-html/${expressionId}.html.gz`;
 
   try {
-    // COMPRIMIR EL HTML CON GZIP
+    // Comprimir el HTML con gzip
     const compressedHtml = await gzip(htmlContent, {
       level: 9, // Máxima compresión
     });
 
-    console.log(`HTML comprimido: ${htmlContent.length} bytes -> ${compressedHtml.length} bytes`);
+    console.log(`HTML comprimido: ${htmlContent.length} bytes -> ${compressedHtml.length} bytes (${((1 - compressedHtml.length / htmlContent.length) * 100).toFixed(1)}% reducción)`);
 
     // Crear el blob con el HTML comprimido
     const htmlBlobSha = await createBlob(compressedHtml);
 
+    // Subir ambos archivos
     await pushMultipleFiles(
       [
         {
@@ -216,13 +218,14 @@ export default async function handler(
           content: inputs.queries,
         },
         {
-          path: htmlPath,
+          path: htmlPath, // El workflow buscará este archivo
           sha: htmlBlobSha,
         },
       ],
       `Add SQL and HTML for: ${expressionId}`
     );
 
+    // Disparar el workflow SOLO con los inputs que espera
     await axios.post(
       `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_FILE_NAME}/dispatches`,
       {
@@ -232,7 +235,7 @@ export default async function handler(
           expression_id: expressionId,
           expressionInfo: String(expressionInfo),
           uniprot_accession: uniprotAccession || "",
-          html_path: htmlPath,
+          // NO incluir html_path - el workflow lo deduce
         },
       },
       {
@@ -265,7 +268,8 @@ export default async function handler(
     message: "Workflow dispatched",
     sql_path: sqlPath,
     expression_id: expressionId,
-    html_path: htmlPath,
+    html_path: htmlPath, // Solo informativo, no se pasa al workflow
     html_compressed: true,
+    compression_ratio: `${((1 - compressedHtml.length / htmlContent.length) * 100).toFixed(1)}%`,
   });
 }
